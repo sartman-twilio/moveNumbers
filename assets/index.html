@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <link rel="stylesheet" href="./style.css" />
+    <title>Hello Twilio Serverless!</title>
+    <style>
+      .item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      .item input[type="checkbox"],
+      .item input[type="radio"] {
+        margin-right: 10px;
+      }
+      .item label {
+        font-size: 16px;
+      }
+      .error {
+        color: red;
+        font-weight: bold;
+      }
+      .section {
+        border: 1px solid #ccc;
+        padding: 10px;
+        margin-bottom: 20px;
+      }
+      .section h3 {
+        color: #007bff; /* Add color to bold text */
+      }
+      .trust-product-section {
+        border: 1px solid #007bff;
+        padding: 10px;
+        margin-bottom: 10px;
+        background-color: #f0f8ff;
+      }
+      .trust-product-section h4 {
+        color: #007bff;
+        margin-bottom: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <header><h1>Moving Numbers</h1></header>
+
+    <main>
+      <form id="moveNumbersForm" onsubmit="moveAndAssignNumbers(event)">
+        <p>
+          <strong>Select the numbers you want to move</strong>
+        </p>
+
+        <h2>Phone Numbers</h2>
+        <p><strong>Numbers:</strong></p>
+        <div id="phoneNumbersContainer"></div>
+
+        <p>
+          <strong>Select the Account you want to move the numbers to</strong>
+        </p>
+
+        <h2>Sub Accounts</h2>
+        <p><strong>Sub Accounts:</strong></p>
+        <div id="subAccountsContainer"></div>
+
+        <h2>Sub Account Resources</h2>
+
+        <div class="section">
+          <h3>SIP Trunks</h3>
+          <div id="sipTrunksContainer"></div>
+        </div>
+
+        <div class="section">
+          <h3>Profiles</h3>
+          <div id="profilesContainer"></div>
+        </div>
+
+        <div class="section">
+          <h3>Addresses</h3>
+          <h4>Select the address for emergency calling</h4>
+          <div id="addressesContainer"></div>
+        </div>
+
+        <div class="section">
+          <h3>Trust Products</h3>
+          <div id="trustProductsContainer"></div>
+        </div>
+
+        <button type="submit">Move and Assign Numbers</button>
+      </form>
+    </main>
+
+    <footer>
+      <p>
+        Made by Shane Artman at
+        <a href="https://www.twilio.com">Twilio</a>
+      </p>
+    </footer>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", async function () {
+        const subAccountsContainer = document.getElementById(
+          "subAccountsContainer"
+        );
+        const phoneNumbersContainer = document.getElementById(
+          "phoneNumbersContainer"
+        );
+        const submitButton = document.querySelector("button[type='submit']");
+
+        function checkFormState() {
+          const selectedPhoneNumbers = phoneNumbersContainer.querySelectorAll(
+            "input[type='checkbox']:checked"
+          ).length;
+          const selectedSubAccount = subAccountsContainer.querySelectorAll(
+            "input[type='radio']:checked"
+          ).length;
+          submitButton.disabled = !(
+            selectedPhoneNumbers > 0 && selectedSubAccount > 0
+          );
+        }
+
+        try {
+          const subAccountsResponse = await fetch("./getSubAccounts");
+          if (!subAccountsResponse.ok)
+            throw new Error("Failed to fetch sub accounts");
+          const subAccounts = await subAccountsResponse.json();
+          // console.log(subAccounts);
+
+          subAccounts.forEach((account) => {
+            const radio = document.createElement("input");
+            radio.type = "radio";
+            radio.name = "subAccount";
+            radio.value = account.sid;
+            radio.id = account.sid;
+
+            const label = document.createElement("label");
+            label.htmlFor = account.sid;
+            label.appendChild(document.createTextNode(account.friendlyName));
+
+            const div = document.createElement("div");
+            div.className = "item";
+            div.appendChild(radio);
+            div.appendChild(label);
+
+            subAccountsContainer.appendChild(div);
+          });
+
+          subAccountsContainer.addEventListener(
+            "change",
+            async function (event) {
+              if (event.target.name === "subAccount") {
+                const subAccountSid = event.target.value;
+                try {
+                  const resourcesResponse = await fetch(
+                    `./getSubaccountResources?subAccountSid=${subAccountSid}`
+                  );
+                  if (!resourcesResponse.ok)
+                    throw new Error("Failed to fetch sub account resources");
+                  const resources = await resourcesResponse.json();
+                  // console.log(resources);
+
+                  populateContainer(
+                    "sipTrunksContainer",
+                    resources.sipTrunks,
+                    "sipTrunk"
+                  );
+                  populateContainer(
+                    "profilesContainer",
+                    resources.profiles,
+                    "profile"
+                  );
+                  populateAddresses("addressesContainer", resources.addresses);
+                  populateTrustProducts(resources.trustProducts);
+                } catch (error) {
+                  console.error(error);
+                }
+              }
+              checkFormState();
+            }
+          );
+        } catch (error) {
+          subAccountsContainer.innerHTML = `<p class="error">${error.message}</p>`;
+        }
+
+        try {
+          const phoneNumbersResponse = await fetch("./getPhoneNumbers");
+          if (!phoneNumbersResponse.ok)
+            throw new Error("Failed to fetch phone numbers");
+          const phoneNumbers = await phoneNumbersResponse.json();
+          // console.log(phoneNumbers);
+
+          phoneNumbers.forEach((number) => {
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.name = "phoneNumber";
+            checkbox.value = number.sid;
+            checkbox.id = number.sid;
+
+            const label = document.createElement("label");
+            label.htmlFor = number.sid;
+            label.appendChild(document.createTextNode(number.friendlyName));
+
+            const div = document.createElement("div");
+            div.className = "item";
+            div.appendChild(checkbox);
+            div.appendChild(label);
+
+            phoneNumbersContainer.appendChild(div);
+          });
+
+          phoneNumbersContainer.addEventListener("change", checkFormState);
+        } catch (error) {
+          phoneNumbersContainer.innerHTML = `<p class="error">${error.message}</p>`;
+        }
+
+        checkFormState();
+      });
+
+      function populateContainer(containerId, items, itemName) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = "";
+        items.forEach((item) => {
+          const radio = document.createElement("input");
+          radio.type = "radio";
+          radio.name = itemName;
+          radio.value = item.sid;
+          radio.id = item.sid;
+
+          const label = document.createElement("label");
+          label.htmlFor = item.sid;
+          label.appendChild(document.createTextNode(item.friendlyName));
+
+          const div = document.createElement("div");
+          div.className = "item";
+          div.appendChild(radio);
+          div.appendChild(label);
+
+          container.appendChild(div);
+        });
+      }
+
+      function populateAddresses(containerId, addresses) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = "";
+        addresses.forEach((address) => {
+          if (address.customerName) {
+            const radio = document.createElement("input");
+            radio.type = "radio";
+            radio.name = "address";
+            radio.value = address.sid;
+            radio.id = address.sid;
+
+            const label = document.createElement("label");
+            label.htmlFor = address.sid;
+            label.appendChild(
+              document.createTextNode(
+                `${address.friendlyName} (${address.city}, ${address.region}, ${address.isoCountry})`
+              )
+            );
+
+            const div = document.createElement("div");
+            div.className = "item";
+            div.appendChild(radio);
+            div.appendChild(label);
+
+            container.appendChild(div);
+          }
+        });
+      }
+
+      function populateTrustProducts(trustProducts) {
+        const trustProductsContainer = document.getElementById(
+          "trustProductsContainer"
+        );
+        trustProductsContainer.innerHTML = "";
+
+        const primaryBusinessProfileContainer = document.createElement("div");
+        primaryBusinessProfileContainer.className = "trust-product-section";
+        const secondaryBusinessProfileContainer = document.createElement("div");
+        secondaryBusinessProfileContainer.className = "trust-product-section";
+        const cnamContainer = document.createElement("div");
+        cnamContainer.className = "trust-product-section";
+        const shstContainer = document.createElement("div");
+        shstContainer.className = "trust-product-section";
+        const voiceIntegrityContainer = document.createElement("div");
+        voiceIntegrityContainer.className = "trust-product-section";
+
+        trustProducts.forEach((product) => {
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.name = "trustProduct";
+          checkbox.value = product.sid;
+          checkbox.id = product.sid;
+
+          const label = document.createElement("label");
+          label.htmlFor = product.sid;
+          label.appendChild(
+            document.createTextNode(
+              `${product.friendlyName} (Status: ${product.status})`
+            )
+          );
+
+          const div = document.createElement("div");
+          div.className = "item";
+          div.appendChild(checkbox);
+          div.appendChild(label);
+
+          switch (product.policySid) {
+            case "RNf3db3cd1fe25fcfd3c3ded065c8fea53":
+              cnamContainer.appendChild(div);
+              break;
+            case "RN7a97559effdf62d00f4298208492a5ea":
+              shstContainer.appendChild(div);
+              break;
+            case "RN5b3660f9598883b1df4e77f77acefba0":
+              voiceIntegrityContainer.appendChild(div);
+              break;
+          }
+        });
+
+        if (primaryBusinessProfileContainer.children.length > 0) {
+          const h4 = document.createElement("h4");
+          h4.appendChild(document.createTextNode("Primary Business Profile"));
+          primaryBusinessProfileContainer.insertBefore(
+            h4,
+            primaryBusinessProfileContainer.firstChild
+          );
+          trustProductsContainer.appendChild(primaryBusinessProfileContainer);
+        }
+        if (secondaryBusinessProfileContainer.children.length > 0) {
+          const h4 = document.createElement("h4");
+          h4.appendChild(document.createTextNode("Secondary Business Profile"));
+          secondaryBusinessProfileContainer.insertBefore(
+            h4,
+            secondaryBusinessProfileContainer.firstChild
+          );
+          trustProductsContainer.appendChild(secondaryBusinessProfileContainer);
+        }
+        if (cnamContainer.children.length > 0) {
+          const h4 = document.createElement("h4");
+          h4.appendChild(document.createTextNode("CNAM"));
+          cnamContainer.insertBefore(h4, cnamContainer.firstChild);
+          trustProductsContainer.appendChild(cnamContainer);
+        }
+        if (shstContainer.children.length > 0) {
+          const h4 = document.createElement("h4");
+          h4.appendChild(document.createTextNode("SHST"));
+          shstContainer.insertBefore(h4, shstContainer.firstChild);
+          trustProductsContainer.appendChild(shstContainer);
+        }
+        if (voiceIntegrityContainer.children.length > 0) {
+          const h4 = document.createElement("h4");
+          h4.appendChild(document.createTextNode("Voice Integrity"));
+          voiceIntegrityContainer.insertBefore(
+            h4,
+            voiceIntegrityContainer.firstChild
+          );
+          trustProductsContainer.appendChild(voiceIntegrityContainer);
+        }
+      }
+
+      async function moveAndAssignNumbers(event) {
+        event.preventDefault();
+        const form = document.getElementById("moveNumbersForm");
+        const formData = new FormData(form);
+        const data = {};
+
+        formData.forEach((value, key) => {
+          if (!data[key]) {
+            data[key] = [];
+          }
+          data[key].push(value);
+        });
+        console.log("form data: ", data);
+        const response = await fetch("./moveAndAssignNumbers", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(data),
+        });
+        const responseJson = await response.json();
+        console.log(responseJson);
+        // Add your function logic here to handle the form data
+      }
+    </script>
+  </body>
+</html>
